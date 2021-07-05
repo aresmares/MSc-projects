@@ -1,0 +1,157 @@
+blueI = im2double(imread("blue_2by4brick.jpg"));
+% g = im2gray(blueI);
+bw = get_blue_mask(blueI);
+bw = bwareaopen(bw,50);
+imshow(bw)
+Ib = blueI .* bw;
+[r c ~] = size(Ib);
+Ib = imboxfilt(Ib,5);
+e = edge(im2gray(Ib),"canny",0.1);
+e = bwareaopen(e,50);
+
+% e = imdilate(e,strel("disk",4,8));
+% e = imerode(e,strel("disk",4,8));
+e = imdilate(e,strel("disk",15,8));
+e = imerode(e,strel("disk",15,8));
+e = bwareaopen(e,900);
+b=bwboundaries(e);
+[e,b] = reduce_noise(e,b,1000,5000);
+
+
+% e = bwmorph(e,"skel");
+% e = bwskel(e);
+figure;imshow(e)
+
+
+[blue_temp, images] = get_region_details_from_bounds(e, b);
+% [rows, colm, ~]=size(rotI);
+ratio = blue_temp(3,:);
+
+bounds = bwboundaries(BW);
+[redR, redC, redZ] = size(Ir);
+Ir = crop_im_boundary(Ir,bounds{1});
+
+redF = detectSURFFeatures(rgb2gray(Ir));
+redF = selectStrongest(redF,5); 
+figure;imshow(Ir); hold on;
+plot(redF);
+redFloc = redF.Location;
+[redF, validRed] = extractFeatures(rgb2gray(Ir),redF,"FeatureSize",128);
+
+
+
+blue_ratios = zeros(0,1);
+for k=1:size(images,2)
+   ends = bwmorph(images{k},"skel");
+    s = sum(ends,"all");
+    a = bwarea(ends);
+    ed = a/s; 
+    blue_ratios(end+1) = ed;
+end
+
+
+template.Edges = e;
+template.Regions = images;
+template.Area = bwarea(BW);
+template.Features = blueF;
+template.Image = rotI;
+template.Block = Ir;
+template.Region_Ratios = blue_ratios;
+template.Region_Bounds = bounds;
+template.Feature_Locations = blueFloc;
+template.Block_Size = [blueR, blueC, blueZ];
+
+
+
+function Ibdiff = intensity_gradients(Id)
+Ibdiffv=Id(1:size(Id)-1,:)-Id(2:size(Id),:);
+Ibdiffh=Id(:,1:size(Id,2)-1)-Id(:,2:size(Id,2));
+Ibdiff=sqrt(Ibdiffh(1:size(Id)-1,:).^2+Ibdiffv(:,1:size(Id,2)-1).^2);
+end
+
+
+
+function [BW, bounds] = isolate_edge_bounds(BW, pix)
+    figure;imshow(BW)
+    BW = bwareaopen(BW,pix);
+    se = strel("disk",2,8);
+    BW = imdilate(BW,se);
+    BW = imerode(BW,se);
+    bounds = bwboundaries(BW);
+end
+
+function [regions, images] = get_region_details_from_bounds(BW, bounds)
+    regions = zeros(size(bounds,1),2);
+    images = cell(0,1);
+    for k=1:size(bounds)
+        t = crop_im_boundary(BW,bounds{k});
+%         figure;imshow(t)
+        measurements = regionprops("table",t, 'Perimeter', 'Area');
+        im = regionprops(t, 'Image');
+        images{end+1}=im.Image;
+        measurements= measurements{:,:};
+        regions(k,:) = measurements(1,1:2);
+    end
+end
+
+function [mask, bounds] = get_blue_mask(I)
+red=I(:,:,1);
+green=I(:,:,2);
+blue=I(:,:,3);
+
+b=find((green+red>=1.5*blue));
+red(b)=0;
+green(b)=0;
+blue(b)=0;
+
+D=cat(3,red,green,blue);
+
+bw=im2bw(D,0);
+[bw, bounds] = reduce_noise(bw,bwboundaries(bw),300,100000);
+mask = imfill(bw,"holes");
+bounds = bounds(~cellfun('isempty',bounds));
+mask = imdilate(mask,strel("disk",2,8));
+mask = imerode(mask,strel("disk",2,8));
+
+
+end
+function [im, bounds] = reduce_noise(I,boundary,si,s2)
+
+bounds = cell(size(boundary,1),1);
+im = zeros(size(I));
+
+for i=1:size(boundary)
+    if size(boundary{i},1) > si && size(boundary{i},1) < s2
+        bounds{i} = boundary{i};
+        b= bounds{i};
+        for n=1:size(b)
+            x = b(n,1);
+            y = b(n,2);
+            im(x,y) = 1;
+        end
+    end
+end
+bounds = bounds(~cellfun('isempty',bounds));
+
+end
+
+function I = crop_im_boundary(Im,boundary)
+    [maxX,maxY] = size(Im);
+    pad = 12;
+    
+    if max(boundary(:,1))+pad > maxX || min(boundary(:,1)) -pad < 1
+        m1 = max(boundary(:,1));    n1 = min(boundary(:,1));
+    else
+        m1 = max(boundary(:,1))+pad;    n1 = min(boundary(:,1))-pad;
+    end
+    
+    if max(boundary(:,2))+pad > maxY || min(boundary(:,2))-pad < 1
+        m2 = max(boundary(:,2));    n2 = min(boundary(:,2));
+    else
+        m2 = max(boundary(:,2))+pad;    n2 = min(boundary(:,2))-pad;
+
+    end
+
+    ima = imcrop(Im, [n2 n1 m2 m1]);
+    I = ima(1:(m1-n1),1:(m2-n2),:);
+end

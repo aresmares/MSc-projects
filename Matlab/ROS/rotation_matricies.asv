@@ -1,0 +1,20 @@
+% rotations from fixed to mobile frame
+rotation = [pi/3, 0, 0]
+translation = [0 0 0]
+
+% Screw transformation
+[R,~] = rotation_matrix(rotation)
+T = translation_matrix(translation)
+transformation = R*T
+transformation = transformation
+
+% current mobile coord frame location
+% pM = [0.6 0.5 1.4 1]'
+% % get fixed frame from transformation
+% pF = transformation * pM
+
+
+% current FIXED fram
+pF = [3 4 0 1]'
+% get MOBILE frame from transformation
+pM = inv(transformation)*pF
